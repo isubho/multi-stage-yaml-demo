@@ -1,0 +1,51 @@
+
+trigger:
+- master
+
+variables:
+  imageName: 'gosample'
+  registry: 'kubreg.azurecr.io'
+
+stages:
+- stage: build
+  jobs:
+  - job: 'BuildAndPush'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'ACR'
+        repository: '$(imageName)'
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'
+    - task: PublishPipelineArtifact@0
+      inputs:
+        artifactName: 'manifests'
+        targetPath: 'manifests'
+
+- stage: deploy
+  jobs:
+  - deployment: 'DeployToK8S'
+    pool:
+      vmImage: 'ubuntu-latest'
+    environment: dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: DownloadPipelineArtifact@1
+              inputs:
+                buildType: 'current'
+                artifactName: 'manifests'
+                targetPath: '$(System.ArtifactsDirectory)/manifests'
+            - task: KubernetesManifest@0
+              inputs:
+                action: 'deploy'
+                kubernetesServiceConnection: 'dev-kub-gosample-1558821689026'
+                namespace: 'gosample'
+                manifests: '$(System.ArtifactsDirectory)/manifests/deploy.yaml'
+                containers: '$(registry)/$(imageName):$(Build.BuildId)'
+
+
+
